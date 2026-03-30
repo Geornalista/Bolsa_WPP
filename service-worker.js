@@ -1,4 +1,4 @@
-const CACHE_NAME = 'comparativo-europeu-v2';
+const CACHE_NAME = 'Acoes-v1';
 
 const ASSETS = [
   './',
