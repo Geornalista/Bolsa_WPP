@@ -34,16 +34,19 @@
 
     <div class="w-full max-w-6xl flex flex-col gap-6">
         <!-- Cabeçalho e Controles -->
-        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 shadow-xl flex flex-col md:flex-row justify-between items-center gap-4">
-            <div>
-                <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-                    <i data-lucide="line-chart" class="text-blue-500"></i>
-                    Análise Gráfica de Ações
-                </h1>
-                <p class="text-sm text-gray-400 mt-1">Implementação em JS com Multi-API (Brapi, Yahoo & Stooq)</p>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 shadow-xl flex flex-col justify-between items-start md:items-center gap-4">
+            <div class="w-full flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="line-chart" class="text-blue-500"></i>
+                        Análise Gráfica de Ações
+                    </h1>
+                    <p class="text-sm text-gray-400 mt-1">Implementação em JS com Multi-API (Brapi, Yahoo & Stooq)</p>
+                </div>
             </div>
 
-            <div class="flex flex-col md:flex-row w-full md:w-auto gap-3 items-center">
+            <!-- Linha de Controles -->
+            <div class="flex flex-col md:flex-row w-full gap-3 items-center justify-start flex-wrap">
                 <select 
                     id="analysisType" 
                     onchange="analisarAtivo()" 
@@ -51,6 +54,8 @@
                 >
                     <option value="bollinger">Bandas de Bollinger</option>
                     <option value="ma9_72">Médias Móveis (9 e 72)</option>
+                    <option value="rsi">IFR (Índice de Força Relativa - 14)</option>
+                    <option value="macd">MACD (12, 26, 9)</option>
                 </select>
 
                 <select 
@@ -103,6 +108,12 @@
                 >
                     <i data-lucide="search" class="w-4 h-4"></i> Analisar
                 </button>
+
+                <!-- Checkbox de Volume -->
+                <div class="flex items-center ml-2 pl-4 border-l border-gray-700">
+                    <input id="showVolume" type="checkbox" onchange="analisarAtivo()" class="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer">
+                    <label for="showVolume" class="ml-2 text-sm font-medium text-gray-300 cursor-pointer">Mostrar Volume</label>
+                </div>
             </div>
         </div>
 
@@ -110,7 +121,7 @@
         <div id="statusMessage" class="hidden rounded-lg p-4 text-sm font-medium"></div>
 
         <!-- Container do Gráfico -->
-        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 shadow-xl relative min-h-[500px] flex items-center justify-center">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 shadow-xl relative min-h-[600px] flex items-center justify-center">
             
             <!-- Indicador de carregamento -->
             <div id="loadingOverlay" class="absolute inset-0 bg-gray-900/80 rounded-xl flex flex-col items-center justify-center z-10">
@@ -120,7 +131,7 @@
             </div>
 
             <!-- Gráfico -->
-            <div id="chartContainer" class="w-full h-[600px]"></div>
+            <div id="chartContainer" class="w-full h-[650px]"></div>
         </div>
     </div>
 
@@ -179,6 +190,57 @@
             return Math.sqrt(variance);
         }
 
+        // --- Funções Matemáticas Avançadas (MACD / RSI) ---
+        function calcularEMA(data, period) {
+            let emaArray = new Array(data.length).fill(null);
+            let startIndex = data.findIndex(val => val !== null);
+            if (startIndex === -1 || startIndex + period > data.length) return emaArray;
+
+            let sum = 0;
+            for (let i = startIndex; i < startIndex + period; i++) {
+                sum += data[i];
+            }
+            emaArray[startIndex + period - 1] = sum / period; // SMA inicial
+
+            const k = 2 / (period + 1);
+            for (let i = startIndex + period; i < data.length; i++) {
+                if (data[i] !== null) {
+                    emaArray[i] = (data[i] - emaArray[i-1]) * k + emaArray[i-1];
+                } else {
+                    emaArray[i] = emaArray[i-1];
+                }
+            }
+            return emaArray;
+        }
+
+        function calcularRSI(prices, period = 14) {
+            let rsiArray = new Array(prices.length).fill(null);
+            let gains = 0, losses = 0;
+
+            for (let i = 1; i <= period; i++) {
+                let change = prices[i] - prices[i-1];
+                if (change > 0) gains += change;
+                else losses -= change;
+            }
+            let avgGain = gains / period;
+            let avgLoss = losses / period;
+
+            rsiArray[period] = 100 - (100 / (1 + (avgGain / (avgLoss === 0 ? 0.0001 : avgLoss))));
+
+            for (let i = period + 1; i < prices.length; i++) {
+                let change = prices[i] - prices[i-1];
+                let gain = change > 0 ? change : 0;
+                let loss = change < 0 ? -change : 0;
+
+                avgGain = (avgGain * (period - 1) + gain) / period;
+                avgLoss = (avgLoss * (period - 1) + loss) / period;
+
+                let rs = avgGain / (avgLoss === 0 ? 0.0001 : avgLoss);
+                rsiArray[i] = 100 - (100 / (1 + rs));
+            }
+            return rsiArray;
+        }
+
         // --- SISTEMA ROBUSTO DE FETCH COM PROXIES ---
         async function fetchWithProxies(url, isJson = true) {
             const proxies = [
@@ -208,14 +270,10 @@
                             if (parsed?.finance?.error) continue;
                             if (parsed?.chart?.error) continue;
                             return parsed; 
-                        } catch (e) {
-                            continue; 
-                        }
+                        } catch (e) { continue; }
                     } else {
                         const lowerText = text.trim().toLowerCase();
-                        if (lowerText.startsWith('<!doctype') || lowerText.startsWith('<html') || lowerText.includes('error 404')) {
-                            continue; 
-                        }
+                        if (lowerText.startsWith('<!doctype') || lowerText.startsWith('<html') || lowerText.includes('error 404')) continue; 
                         return text;
                     }
                 } catch (e) {
@@ -225,7 +283,6 @@
             throw new Error("Todos os proxies foram bloqueados no momento.");
         }
 
-        // Analisador universal de arquivos CSV 
         function parseCSV(csv, sourceName) {
             const lines = csv.split('\n').map(l => l.trim()).filter(l => l);
             if (lines.length > 1 && lines[0].toLowerCase().includes('date')) {
@@ -233,9 +290,11 @@
                 const dateIdx = headers.indexOf('date');
                 let closeIdx = headers.indexOf('adj close');
                 if (closeIdx === -1) closeIdx = headers.indexOf('close');
+                const volIdx = headers.indexOf('volume');
                 
                 const t = [];
                 const c = [];
+                const v = [];
                 
                 for (let i = 1; i < lines.length; i++) {
                     const cols = lines[i].split(',');
@@ -244,17 +303,19 @@
                         if (!isNaN(dateObj.getTime())) {
                             t.push(dateObj.getTime() / 1000);
                             c.push(parseFloat(cols[closeIdx]));
+                            v.push((volIdx !== -1 && cols[volIdx] !== 'null') ? parseFloat(cols[volIdx]) : 0);
                         }
                     }
                 }
                 
                 if (t.length > 0) {
-                    const combined = t.map((time, idx) => ({ time, price: c[idx] }));
+                    const combined = t.map((time, idx) => ({ time, price: c[idx], vol: v[idx] }));
                     combined.sort((a, b) => a.time - b.time);
                     
                     return { 
                         timestamps: combined.map(item => item.time), 
                         closePricesRaw: combined.map(item => item.price), 
+                        volumesRaw: combined.map(item => item.vol),
                         source: sourceName 
                     };
                 }
@@ -266,37 +327,27 @@
         async function obterDadosReais(ticker) {
             const cacheBuster = `&cb=${Date.now()}`;
 
-            // TENTATIVA 1: API Oficial do Mercado Brasileiro (Brapi) - Permite CORS nativo!
+            // TENTATIVA 1: API Oficial do Mercado Brasileiro (Brapi)
             if (ticker.toUpperCase().endsWith('.SA')) {
                 try {
                     document.getElementById('loadingStep').textContent = "Consultando API Oficial B3 (Brapi)...";
                     const cleanTicker = ticker.replace('.SA', '');
                     const brapiUrl = `https://brapi.dev/api/quote/${cleanTicker}?range=1y&interval=1d&fundamental=false`;
                     
-                    // Tentativa Direta (Geralmente funciona sem proxy por ter CORS configurado)
                     let res = await fetch(brapiUrl).catch(() => null);
-                    let data;
-                    if (res && res.ok) {
-                        data = await res.json();
-                    } else {
-                        // Fallback usando proxy se a requisição direta falhar
-                        data = await fetchWithProxies(brapiUrl, true);
-                    }
+                    let data = (res && res.ok) ? await res.json() : await fetchWithProxies(brapiUrl, true);
 
                     if (data?.results?.[0]?.historicalDataPrice?.length > 0) {
                         const history = data.results[0].historicalDataPrice;
-                        const t = [];
-                        const c = [];
+                        const t = [], c = [], v = [];
                         history.forEach(item => {
                             if (item.close && item.date) {
-                                t.push(item.date); // Brapi devolve UNIX timestamp em segundos
+                                t.push(item.date); 
                                 c.push(item.close);
+                                v.push(item.volume || 0);
                             }
                         });
-                        
-                        if (t.length > 0) {
-                            return { timestamps: t, closePricesRaw: c, source: 'Brapi.dev (Mercado B3)' };
-                        }
+                        if (t.length > 0) return { timestamps: t, closePricesRaw: c, volumesRaw: v, source: 'Brapi.dev (Mercado B3)' };
                     }
                 } catch(e) { console.warn("Brapi falhou.", e); }
             }
@@ -310,6 +361,7 @@
                     return {
                         timestamps: data.chart.result[0].timestamp,
                         closePricesRaw: data.chart.result[0].indicators.quote[0].close,
+                        volumesRaw: data.chart.result[0].indicators.quote[0].volume || [],
                         source: 'Yahoo Finance (Chart API)'
                     };
                 }
@@ -321,15 +373,17 @@
                 const sparkUrl = `https://query2.finance.yahoo.com/v7/finance/spark?symbols=${ticker}&range=1y&interval=1d${cacheBuster}`;
                 const data = await fetchWithProxies(sparkUrl, true);
                 if (data?.spark?.result?.[0]?.response?.[0]?.timestamp) {
+                    const result = data.spark.result[0].response[0];
                     return {
-                        timestamps: data.spark.result[0].response[0].timestamp,
-                        closePricesRaw: data.spark.result[0].response[0].indicators.quote[0].close,
+                        timestamps: result.timestamp,
+                        closePricesRaw: result.indicators.quote[0].close,
+                        volumesRaw: result.indicators.quote[0].volume || new Array(result.timestamp.length).fill(0),
                         source: 'Yahoo Finance (Spark API)'
                     };
                 }
             } catch(e) { console.warn("YF Spark falhou."); }
 
-            // TENTATIVA 4: Yahoo Finance Endpoint de Arquivo CSV Histórico
+            // TENTATIVA 4: Yahoo Finance CSV
             try {
                 document.getElementById('loadingStep').textContent = "Acessando Histórico Cru do Yahoo Finance (CSV)...";
                 const now = Math.floor(Date.now() / 1000);
@@ -339,7 +393,7 @@
                 return parseCSV(csv, 'Yahoo Finance (CSV via Download)');
             } catch(e) { console.warn("YF CSV Download falhou."); }
 
-            // TENTATIVA 5: Stooq.com (Base de dados global)
+            // TENTATIVA 5: Stooq
             try {
                 document.getElementById('loadingStep').textContent = "Acessando base de dados alternativa (Stooq)...";
                 let stooqTicker = ticker.endsWith('.SA') ? ticker.replace('.SA', '.BR') : (ticker.includes('.') ? ticker : ticker + '.US');
@@ -357,54 +411,46 @@
             if (!ticker) return;
 
             const analysisType = document.getElementById('analysisType').value;
+            const showVolume = document.getElementById('showVolume').checked;
 
             hideMessage();
             setLoader(true);
 
             try {
-                const { timestamps, closePricesRaw, source } = await obterDadosReais(ticker);
+                const { timestamps, closePricesRaw, volumesRaw, source } = await obterDadosReais(ticker);
 
                 showMessage(`<strong>Sucesso:</strong> Dados reais de <b>${ticker}</b> carregados.<br><span class="text-xs opacity-75">Fonte autêntica capturada: ${source}</span>`, 'success');
 
                 const dates = [];
                 const closePrices = [];
+                const volumes = [];
                 
-                // Variáveis para Bollinger
-                const smas20 = [];
-                const upperBands = [];
-                const lowerBands = [];
-                const buyDates = [];
-                const buyPrices = [];
-                const sellDates = [];
-                const sellPrices = [];
+                // Variáveis base (Bollinger, MAs)
+                const smas20 = [], upperBands = [], lowerBands = [];
+                const buyDates = [], buyPrices = [], sellDates = [], sellPrices = [];
                 let priceWindow20 = [];
 
-                // Variáveis para Médias Móveis (9 e 72)
-                const smas9 = [];
-                const smas72 = [];
-                let priceWindow9 = [];
-                let priceWindow72 = [];
+                const smas9 = [], smas72 = [];
+                let priceWindow9 = [], priceWindow72 = [];
 
+                // 1. Limpeza e adequação dos dados
                 for (let i = 0; i < timestamps.length; i++) {
                     const price = closePricesRaw[i];
-                    
                     if (price === null || isNaN(price)) continue; 
                     
                     const dateObj = new Date(timestamps[i] * 1000);
-                    // Adiciona o timezone local ao formatar, caso queira
                     const dateStr = dateObj.toISOString().split('T')[0];
 
                     dates.push(dateStr);
                     closePrices.push(price);
+                    volumes.push(volumesRaw ? (volumesRaw[i] || 0) : 0);
 
                     if (analysisType === 'bollinger') {
                         priceWindow20.push(price);
                         if (priceWindow20.length > WINDOW_SIZE) priceWindow20.shift(); 
-
                         if (priceWindow20.length === WINDOW_SIZE) {
                             const mean = getMean(priceWindow20);
                             const std = getStandardDeviation(priceWindow20, mean);
-                            
                             const upper = mean + (NUM_STD_DEV * std);
                             const lower = mean - (NUM_STD_DEV * std);
 
@@ -412,88 +458,95 @@
                             upperBands.push(upper);
                             lowerBands.push(lower);
 
-                            if (price <= lower) {
-                                buyDates.push(dateStr);
-                                buyPrices.push(price);
-                            } else if (price >= upper) {
-                                sellDates.push(dateStr);
-                                sellPrices.push(price);
-                            }
+                            if (price <= lower) { buyDates.push(dateStr); buyPrices.push(price); } 
+                            else if (price >= upper) { sellDates.push(dateStr); sellPrices.push(price); }
                         } else {
-                            smas20.push(null);
-                            upperBands.push(null);
-                            lowerBands.push(null);
+                            smas20.push(null); upperBands.push(null); lowerBands.push(null);
                         }
                     } else if (analysisType === 'ma9_72') {
                         priceWindow9.push(price);
                         priceWindow72.push(price);
-
                         if (priceWindow9.length > 9) priceWindow9.shift();
                         if (priceWindow72.length > 72) priceWindow72.shift();
-
-                        if (priceWindow9.length === 9) smas9.push(getMean(priceWindow9));
-                        else smas9.push(null);
-
-                        if (priceWindow72.length === 72) smas72.push(getMean(priceWindow72));
-                        else smas72.push(null);
+                        smas9.push(priceWindow9.length === 9 ? getMean(priceWindow9) : null);
+                        smas72.push(priceWindow72.length === 72 ? getMean(priceWindow72) : null);
                     }
                 }
 
                 const plotData = [];
+                const isOscillator = analysisType === 'rsi' || analysisType === 'macd';
 
-                if (analysisType === 'bollinger') {
-                    plotData.push({
-                        x: dates, y: lowerBands, name: 'Banda Inferior', type: 'scatter', mode: 'lines',
-                        line: { color: 'rgba(173,204,255,0.2)' }
-                    });
-                    plotData.push({
-                        x: dates, y: upperBands, name: 'Banda Superior', type: 'scatter', mode: 'lines',
-                        fill: 'tonexty', fillcolor: 'rgba(173,204,255,0.2)', line: { color: 'rgba(173,204,255,0.2)' }
-                    });
-                }
-
+                // --- PLOTAGEM DO PREÇO (Gráfico Principal) ---
                 plotData.push({
                     x: dates, y: closePrices, name: 'Preço Fechamento', type: 'scatter', mode: 'lines',
-                    line: { color: '#636EFA' }
+                    line: { color: '#636EFA' }, yaxis: 'y'
                 });
 
                 if (analysisType === 'bollinger') {
-                    plotData.push({
-                        x: dates, y: smas20, name: 'Média Móvel (20)', type: 'scatter', mode: 'lines',
-                        line: { color: '#FECB52' }
-                    });
-                    plotData.push({
-                        x: buyDates, y: buyPrices, name: 'Compra', type: 'scatter', mode: 'markers',
-                        marker: { color: '#00CC96', size: 8 }
-                    });
-                    plotData.push({
-                        x: sellDates, y: sellPrices, name: 'Venda', type: 'scatter', mode: 'markers',
-                        marker: { color: '#EF553B', size: 8 }
-                    });
+                    plotData.push({ x: dates, y: lowerBands, name: 'Banda Inferior', type: 'scatter', mode: 'lines', line: { color: 'rgba(173,204,255,0.2)' } });
+                    plotData.push({ x: dates, y: upperBands, name: 'Banda Superior', type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: 'rgba(173,204,255,0.2)', line: { color: 'rgba(173,204,255,0.2)' } });
+                    plotData.push({ x: dates, y: smas20, name: 'Média Móvel (20)', type: 'scatter', mode: 'lines', line: { color: '#FECB52' } });
+                    plotData.push({ x: buyDates, y: buyPrices, name: 'Compra', type: 'scatter', mode: 'markers', marker: { color: '#00CC96', size: 8 } });
+                    plotData.push({ x: sellDates, y: sellPrices, name: 'Venda', type: 'scatter', mode: 'markers', marker: { color: '#EF553B', size: 8 } });
                 } else if (analysisType === 'ma9_72') {
-                    plotData.push({
-                        x: dates, y: smas9, name: 'Média Móvel (9)', type: 'scatter', mode: 'lines',
-                        line: { color: '#00CC96' } 
-                    });
-                    plotData.push({
-                        x: dates, y: smas72, name: 'Média Móvel (72)', type: 'scatter', mode: 'lines',
-                        line: { color: '#EF553B' } 
-                    });
+                    plotData.push({ x: dates, y: smas9, name: 'Média Móvel (9)', type: 'scatter', mode: 'lines', line: { color: '#00CC96' } });
+                    plotData.push({ x: dates, y: smas72, name: 'Média Móvel (72)', type: 'scatter', mode: 'lines', line: { color: '#EF553B' } });
+                } else if (analysisType === 'rsi') {
+                    const rsiData = calcularRSI(closePrices, 14);
+                    plotData.push({ x: dates, y: rsiData, name: 'IFR (14)', type: 'scatter', mode: 'lines', line: { color: '#A855F7' }, yaxis: 'y2' });
+                    // Linhas de Sobrecompra e Sobrevenda
+                    plotData.push({ x: [dates[0], dates[dates.length-1]], y: [70, 70], type: 'scatter', mode: 'lines', line: { color: '#EF553B', dash: 'dash', width: 1 }, hoverinfo: 'skip', showlegend: false, yaxis: 'y2' });
+                    plotData.push({ x: [dates[0], dates[dates.length-1]], y: [30, 30], type: 'scatter', mode: 'lines', line: { color: '#00CC96', dash: 'dash', width: 1 }, hoverinfo: 'skip', showlegend: false, yaxis: 'y2' });
+                } else if (analysisType === 'macd') {
+                    const ema12 = calcularEMA(closePrices, 12);
+                    const ema26 = calcularEMA(closePrices, 26);
+                    const macdLine = ema12.map((val, i) => (val !== null && ema26[i] !== null) ? val - ema26[i] : null);
+                    const signalLine = calcularEMA(macdLine, 9);
+                    const histData = macdLine.map((val, i) => (val !== null && signalLine[i] !== null) ? val - signalLine[i] : null);
+                    
+                    const histColors = histData.map(val => val >= 0 ? '#00CC96' : '#EF553B');
+                    
+                    plotData.push({ x: dates, y: histData, name: 'Histograma', type: 'bar', marker: { color: histColors }, yaxis: 'y2' });
+                    plotData.push({ x: dates, y: macdLine, name: 'MACD', type: 'scatter', mode: 'lines', line: { color: '#3B82F6' }, yaxis: 'y2' });
+                    plotData.push({ x: dates, y: signalLine, name: 'Sinal (9)', type: 'scatter', mode: 'lines', line: { color: '#F59E0B' }, yaxis: 'y2' });
                 }
 
-                const chartTitle = analysisType === 'bollinger' 
-                    ? `${ticker} - Bandas de Bollinger` 
-                    : `${ticker} - Médias Móveis (9 e 72)`;
-
+                // --- CONFIGURAÇÃO DO LAYOUT & SUB-GRÁFICOS ---
                 const layout = {
-                    title: { text: chartTitle, font: { color: '#ffffff', size: 18 } },
+                    title: { text: `${ticker} - Análise Técnica`, font: { color: '#ffffff', size: 18 } },
                     paper_bgcolor: '#111827', plot_bgcolor: '#111827', font: { color: '#9ca3af' },
                     xaxis: { title: 'Data', gridcolor: '#374151', zerolinecolor: '#374151' },
-                    yaxis: { title: 'Preço (R$)', gridcolor: '#374151', zerolinecolor: '#374151', tickprefix: 'R$ ' },
-                    legend: { orientation: 'h', y: -0.2, x: 0.5, xanchor: 'center' },
-                    margin: { t: 60, l: 60, r: 30, b: 60 },
+                    legend: { orientation: 'h', y: 1.1, x: 0.5, xanchor: 'center' },
+                    margin: { t: 60, l: 60, r: 40, b: 60 },
                     hovermode: 'x unified'
                 };
+
+                // Ajuste dos eixos (Price vs Osciladores)
+                if (isOscillator) {
+                    layout.yaxis = { title: 'Preço (R$)', domain: [0.35, 1], gridcolor: '#374151', zerolinecolor: '#374151', tickprefix: 'R$ ' };
+                    layout.yaxis2 = { title: analysisType === 'rsi' ? 'IFR (14)' : 'MACD', domain: [0, 0.25], gridcolor: '#374151', zerolinecolor: '#374151' };
+                } else {
+                    layout.yaxis = { title: 'Preço (R$)', domain: [0, 1], gridcolor: '#374151', zerolinecolor: '#374151', tickprefix: 'R$ ' };
+                }
+
+                // --- PLOTAGEM DE VOLUME OPCIONAL ---
+                if (showVolume) {
+                    const maxVol = Math.max(...volumes);
+                    // Colore o volume de verde se o dia fechou em alta em relação a ontem, vermelho se em baixa
+                    const volColors = closePrices.map((cp, i) => {
+                        if (i === 0) return 'rgba(156, 163, 175, 0.4)'; 
+                        return cp >= closePrices[i-1] ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                    });
+
+                    plotData.push({
+                        x: dates, y: volumes, name: 'Volume', type: 'bar', marker: { color: volColors }, yaxis: 'y3', hoverinfo: 'y'
+                    });
+
+                    // Truque: cria um eixo invisível sobreposto ao preço, forçando as barras a ficarem no fundo (25% inferior)
+                    layout.yaxis3 = {
+                        overlaying: 'y', side: 'right', showgrid: false, showticklabels: false, range: [0, maxVol * 4]
+                    };
+                }
 
                 Plotly.newPlot('chartContainer', plotData, layout, { responsive: true, displayModeBar: false });
                 
