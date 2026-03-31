@@ -121,7 +121,7 @@
                 </button>
 
                 <!-- Checkbox de Volume -->
-                <div class="flex items-center ml-2 pl-4 border-l border-gray-700">
+                <div class="flex items-center ml-0 md:ml-2 pl-0 md:pl-4 border-l-0 md:border-l border-gray-700 mt-2 md:mt-0">
                     <input id="showVolume" type="checkbox" onchange="analisarAtivo()" class="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer">
                     <label for="showVolume" class="ml-2 text-sm font-medium text-gray-300 cursor-pointer">Mostrar Volume</label>
                 </div>
@@ -131,8 +131,8 @@
         <!-- Alertas / Estado -->
         <div id="statusMessage" class="hidden rounded-lg p-4 text-sm font-medium"></div>
 
-        <!-- Contentor do Gráfico -->
-        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 shadow-xl relative min-h-[600px] flex items-center justify-center">
+        <!-- Contentor do Gráfico (Altura ajustável para mobile) -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-2 md:p-4 shadow-xl relative min-h-[500px] md:min-h-[600px] flex items-center justify-center">
             
             <!-- Indicador de carregamento -->
             <div id="loadingOverlay" class="absolute inset-0 bg-gray-900/80 rounded-xl flex flex-col items-center justify-center z-10">
@@ -142,7 +142,7 @@
             </div>
 
             <!-- Gráfico -->
-            <div id="chartContainer" class="w-full h-[650px]"></div>
+            <div id="chartContainer" class="w-full h-[550px] md:h-[650px]"></div>
         </div>
     </div>
 
@@ -444,6 +444,9 @@
             const chartStyle = document.getElementById('chartStyle').value;
             const showVolume = document.getElementById('showVolume').checked;
 
+            // Deteção simples de dispositivo móvel para otimizar a vista
+            const isMobile = window.innerWidth < 768;
+
             hideMessage();
             setLoader(true);
 
@@ -477,7 +480,7 @@
 
                     dates.push(dateStr);
                     
-                    // Preenchimento OHLC seguro (caso os valores open/high/low sejam nulos, usamos o preço de fecho)
+                    // Preenchimento OHLC seguro
                     opens.push(openRaw && openRaw[i] !== null ? openRaw[i] : price);
                     highs.push(highRaw && highRaw[i] !== null ? highRaw[i] : price);
                     lows.push(lowRaw && lowRaw[i] !== null ? lowRaw[i] : price);
@@ -566,11 +569,19 @@
                     plotData.push({ x: dates, y: signalLine, name: 'Sinal (9)', type: 'scatter', mode: 'lines', line: { color: '#F59E0B' }, yaxis: 'y2' });
                 }
 
-                // --- CONFIGURAÇÃO DO LAYOUT & SUB-GRÁFICOS ---
                 const chartTitle = analysisType === 'bollinger' 
                     ? `${ticker} - Bandas de Bollinger` 
                     : `${ticker} - Análise Técnica`;
 
+                // --- OTIMIZAÇÃO DE VISUALIZAÇÃO PARA MOBILE ---
+                let initialXRange = null;
+                // Se for telemóvel e tivermos mais de 60 dias de dados (aprox 3 meses)
+                // Fazemos o zoom inicial nos últimos 3 meses para que as velas sejam visíveis
+                if (isMobile && dates.length > 60) {
+                    initialXRange = [dates[dates.length - 60], dates[dates.length - 1]];
+                }
+
+                // --- CONFIGURAÇÃO DO LAYOUT & SUB-GRÁFICOS ---
                 const layout = {
                     title: { 
                         text: chartTitle, 
@@ -578,29 +589,37 @@
                         x: 0.5,
                         xanchor: 'center'
                     },
-                    paper_bgcolor: '#111827', plot_bgcolor: '#111827', font: { color: '#9ca3af' },
+                    paper_bgcolor: '#111827', plot_bgcolor: '#111827', font: { color: '#9ca3af', size: isMobile ? 10 : 12 },
                     xaxis: { 
-                        title: 'Data', 
+                        title: isMobile ? '' : 'Data', // Remove o texto do eixo X no mobile para poupar espaço
                         gridcolor: '#374151', 
                         zerolinecolor: '#374151',
-                        rangeslider: { visible: false } // Remove o slider de navegação padrão das velas que comprime o gráfico
+                        rangeslider: { visible: false },
+                        range: initialXRange // Aplica o Zoom Automático (se existir)
                     },
                     
-                    // Move a legenda para a parte inferior e alinha à esquerda para evitar sobreposições horizontais
-                    legend: { orientation: 'h', y: -0.25, x: 0, yanchor: 'top' }, 
+                    legend: { 
+                        orientation: 'h', 
+                        y: -0.25, 
+                        x: 0, 
+                        yanchor: 'top',
+                        font: { size: isMobile ? 10 : 12 }
+                    }, 
                     
-                    // Ajuste das margens: reduz o topo e aumenta a base para caber a legenda e o eixo X perfeitamente
-                    margin: { t: 70, l: 60, r: 40, b: 120 }, 
+                    // Ajuste de margens dinâmico: o telemóvel requer margens laterais muito menores
+                    margin: isMobile 
+                        ? { t: 60, l: 45, r: 15, b: 120 } 
+                        : { t: 70, l: 60, r: 40, b: 120 }, 
                     
                     hovermode: 'x unified'
                 };
 
                 // Ajuste dos eixos (Price vs Osciladores)
                 if (isOscillator) {
-                    layout.yaxis = { title: 'Preço (R$)', domain: [0.35, 1], gridcolor: '#374151', zerolinecolor: '#374151', tickprefix: 'R$ ' };
-                    layout.yaxis2 = { title: analysisType === 'rsi' ? 'IFR (14)' : 'MACD', domain: [0, 0.25], gridcolor: '#374151', zerolinecolor: '#374151' };
+                    layout.yaxis = { title: isMobile ? '' : 'Preço (R$)', domain: [0.35, 1], gridcolor: '#374151', zerolinecolor: '#374151', tickprefix: isMobile ? '' : 'R$ ' };
+                    layout.yaxis2 = { title: isMobile ? '' : (analysisType === 'rsi' ? 'IFR' : 'MACD'), domain: [0, 0.25], gridcolor: '#374151', zerolinecolor: '#374151' };
                 } else {
-                    layout.yaxis = { title: 'Preço (R$)', domain: [0, 1], gridcolor: '#374151', zerolinecolor: '#374151', tickprefix: 'R$ ' };
+                    layout.yaxis = { title: isMobile ? '' : 'Preço (R$)', domain: [0, 1], gridcolor: '#374151', zerolinecolor: '#374151', tickprefix: isMobile ? '' : 'R$ ' };
                 }
 
                 // --- PLOTAGEM DE VOLUME OPCIONAL ---
@@ -616,7 +635,6 @@
                         x: dates, y: volumes, name: 'Volume', type: 'bar', marker: { color: volColors }, yaxis: 'y3', hoverinfo: 'y'
                     });
 
-                    // Truque: cria um eixo invisível sobreposto ao preço, forçando as barras a ficarem no fundo (25% inferior)
                     layout.yaxis3 = {
                         overlaying: 'y', side: 'right', showgrid: false, showticklabels: false, range: [0, maxVol * 4]
                     };
