@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-PT">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Análise de Ações - Bandas de Bollinger</title>
+    <title>Análise de Ações - Bandas de Bollinger e Velas</title>
     <!-- Tailwind CSS para estilização rápida -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Plotly.js para os gráficos -->
@@ -12,7 +12,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body {
-            background-color: #0d1117; /* Fundo escuro imitando o plotly_dark */
+            background-color: #0d1117; /* Fundo escuro a imitar o plotly_dark */
             color: #c9d1d9;
         }
         /* Spinner de carregamento */
@@ -33,7 +33,7 @@
 <body class="min-h-screen flex flex-col items-center p-4 md:p-8">
 
     <div class="w-full max-w-6xl flex flex-col gap-6">
-        <!-- Cabeçalho e Controles -->
+        <!-- Cabeçalho e Controlos -->
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 shadow-xl flex flex-col justify-between items-start md:items-center gap-4">
             <div class="w-full flex justify-between items-center">
                 <div>
@@ -45,8 +45,19 @@
                 </div>
             </div>
 
-            <!-- Linha de Controles -->
+            <!-- Linha de Controlos -->
             <div class="flex flex-col md:flex-row w-full gap-3 items-center justify-start flex-wrap">
+                <!-- Estilo do Gráfico -->
+                <select 
+                    id="chartStyle" 
+                    onchange="analisarAtivo()" 
+                    class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full md:w-auto p-2.5 cursor-pointer font-medium"
+                >
+                    <option value="candlestick">Velas (Candlestick)</option>
+                    <option value="line">Linha Simples</option>
+                </select>
+
+                <!-- Tipo de Análise -->
                 <select 
                     id="analysisType" 
                     onchange="analisarAtivo()" 
@@ -117,17 +128,17 @@
             </div>
         </div>
 
-        <!-- Alertas / Status -->
+        <!-- Alertas / Estado -->
         <div id="statusMessage" class="hidden rounded-lg p-4 text-sm font-medium"></div>
 
-        <!-- Container do Gráfico -->
+        <!-- Contentor do Gráfico -->
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 shadow-xl relative min-h-[600px] flex items-center justify-center">
             
             <!-- Indicador de carregamento -->
             <div id="loadingOverlay" class="absolute inset-0 bg-gray-900/80 rounded-xl flex flex-col items-center justify-center z-10">
                 <div class="loader mb-4"></div>
-                <p class="text-blue-400 font-medium mt-2">Buscando dados e calculando...</p>
-                <p class="text-gray-500 text-xs mt-1" id="loadingStep">Conectando aos provedores de dados...</p>
+                <p class="text-blue-400 font-medium mt-2">A procurar dados e a calcular...</p>
+                <p class="text-gray-500 text-xs mt-1" id="loadingStep">A ligar aos fornecedores de dados...</p>
             </div>
 
             <!-- Gráfico -->
@@ -174,7 +185,7 @@
             document.getElementById('statusMessage').classList.add('hidden');
         }
 
-        function setLoader(show, stepText = "Conectando aos provedores de dados...") {
+        function setLoader(show, stepText = "A ligar aos fornecedores de dados...") {
             const overlay = document.getElementById('loadingOverlay');
             document.getElementById('loadingStep').textContent = stepText;
             if (show) overlay.classList.remove('hidden');
@@ -288,13 +299,15 @@
             if (lines.length > 1 && lines[0].toLowerCase().includes('date')) {
                 const headers = lines[0].toLowerCase().split(',');
                 const dateIdx = headers.indexOf('date');
+                const openIdx = headers.indexOf('open');
+                const highIdx = headers.indexOf('high');
+                const lowIdx = headers.indexOf('low');
+                
                 let closeIdx = headers.indexOf('adj close');
                 if (closeIdx === -1) closeIdx = headers.indexOf('close');
                 const volIdx = headers.indexOf('volume');
                 
-                const t = [];
-                const c = [];
-                const v = [];
+                const t = [], o = [], h = [], l = [], c = [], v = [];
                 
                 for (let i = 1; i < lines.length; i++) {
                     const cols = lines[i].split(',');
@@ -302,6 +315,9 @@
                         const dateObj = new Date(cols[dateIdx]);
                         if (!isNaN(dateObj.getTime())) {
                             t.push(dateObj.getTime() / 1000);
+                            o.push((openIdx !== -1 && cols[openIdx] !== 'null') ? parseFloat(cols[openIdx]) : parseFloat(cols[closeIdx]));
+                            h.push((highIdx !== -1 && cols[highIdx] !== 'null') ? parseFloat(cols[highIdx]) : parseFloat(cols[closeIdx]));
+                            l.push((lowIdx !== -1 && cols[lowIdx] !== 'null') ? parseFloat(cols[lowIdx]) : parseFloat(cols[closeIdx]));
                             c.push(parseFloat(cols[closeIdx]));
                             v.push((volIdx !== -1 && cols[volIdx] !== 'null') ? parseFloat(cols[volIdx]) : 0);
                         }
@@ -309,18 +325,21 @@
                 }
                 
                 if (t.length > 0) {
-                    const combined = t.map((time, idx) => ({ time, price: c[idx], vol: v[idx] }));
+                    const combined = t.map((time, idx) => ({ time, open: o[idx], high: h[idx], low: l[idx], price: c[idx], vol: v[idx] }));
                     combined.sort((a, b) => a.time - b.time);
                     
                     return { 
                         timestamps: combined.map(item => item.time), 
+                        openRaw: combined.map(item => item.open),
+                        highRaw: combined.map(item => item.high),
+                        lowRaw: combined.map(item => item.low),
                         closePricesRaw: combined.map(item => item.price), 
                         volumesRaw: combined.map(item => item.vol),
                         source: sourceName 
                     };
                 }
             }
-            throw new Error("Formato de CSV inválido ou arquivo vazio.");
+            throw new Error("Formato de CSV inválido ou ficheiro vazio.");
         }
 
         // --- ESTRATÉGIA DE MÚLTIPLAS APIs REAIS ---
@@ -330,7 +349,7 @@
             // TENTATIVA 1: API Oficial do Mercado Brasileiro (Brapi)
             if (ticker.toUpperCase().endsWith('.SA')) {
                 try {
-                    document.getElementById('loadingStep').textContent = "Consultando API Oficial B3 (Brapi)...";
+                    document.getElementById('loadingStep').textContent = "A consultar a API Oficial B3 (Brapi)...";
                     const cleanTicker = ticker.replace('.SA', '');
                     const brapiUrl = `https://brapi.dev/api/quote/${cleanTicker}?range=1y&interval=1d&fundamental=false`;
                     
@@ -339,29 +358,36 @@
 
                     if (data?.results?.[0]?.historicalDataPrice?.length > 0) {
                         const history = data.results[0].historicalDataPrice;
-                        const t = [], c = [], v = [];
+                        const t = [], o = [], h = [], l = [], c = [], v = [];
                         history.forEach(item => {
                             if (item.close && item.date) {
                                 t.push(item.date); 
+                                o.push(item.open || item.close);
+                                h.push(item.high || item.close);
+                                l.push(item.low || item.close);
                                 c.push(item.close);
                                 v.push(item.volume || 0);
                             }
                         });
-                        if (t.length > 0) return { timestamps: t, closePricesRaw: c, volumesRaw: v, source: 'Brapi.dev (Mercado B3)' };
+                        if (t.length > 0) return { timestamps: t, openRaw: o, highRaw: h, lowRaw: l, closePricesRaw: c, volumesRaw: v, source: 'Brapi.dev (Mercado B3)' };
                     }
                 } catch(e) { console.warn("Brapi falhou.", e); }
             }
             
             // TENTATIVA 2: Yahoo Finance API Principal
             try {
-                document.getElementById('loadingStep').textContent = "Tentando Yahoo Finance (Chart API)...";
+                document.getElementById('loadingStep').textContent = "A tentar Yahoo Finance (Chart API)...";
                 const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d${cacheBuster}`;
                 const data = await fetchWithProxies(yfUrl, true);
                 if (data?.chart?.result?.[0]?.timestamp) {
+                    const quote = data.chart.result[0].indicators.quote[0];
                     return {
                         timestamps: data.chart.result[0].timestamp,
-                        closePricesRaw: data.chart.result[0].indicators.quote[0].close,
-                        volumesRaw: data.chart.result[0].indicators.quote[0].volume || [],
+                        openRaw: quote.open || quote.close,
+                        highRaw: quote.high || quote.close,
+                        lowRaw: quote.low || quote.close,
+                        closePricesRaw: quote.close,
+                        volumesRaw: quote.volume || [],
                         source: 'Yahoo Finance (Chart API)'
                     };
                 }
@@ -369,15 +395,19 @@
 
             // TENTATIVA 3: Yahoo Finance Spark API 
             try {
-                document.getElementById('loadingStep').textContent = "Tentando Yahoo Finance (Spark API)...";
+                document.getElementById('loadingStep').textContent = "A tentar Yahoo Finance (Spark API)...";
                 const sparkUrl = `https://query2.finance.yahoo.com/v7/finance/spark?symbols=${ticker}&range=1y&interval=1d${cacheBuster}`;
                 const data = await fetchWithProxies(sparkUrl, true);
                 if (data?.spark?.result?.[0]?.response?.[0]?.timestamp) {
                     const result = data.spark.result[0].response[0];
+                    const quote = result.indicators.quote[0];
                     return {
                         timestamps: result.timestamp,
-                        closePricesRaw: result.indicators.quote[0].close,
-                        volumesRaw: result.indicators.quote[0].volume || new Array(result.timestamp.length).fill(0),
+                        openRaw: quote.open || quote.close,
+                        highRaw: quote.high || quote.close,
+                        lowRaw: quote.low || quote.close,
+                        closePricesRaw: quote.close,
+                        volumesRaw: quote.volume || new Array(result.timestamp.length).fill(0),
                         source: 'Yahoo Finance (Spark API)'
                     };
                 }
@@ -385,7 +415,7 @@
 
             // TENTATIVA 4: Yahoo Finance CSV
             try {
-                document.getElementById('loadingStep').textContent = "Acessando Histórico Cru do Yahoo Finance (CSV)...";
+                document.getElementById('loadingStep').textContent = "A aceder ao Histórico Cru do Yahoo Finance (CSV)...";
                 const now = Math.floor(Date.now() / 1000);
                 const oneYearAgo = now - (365 * 86400);
                 const yfCsvUrl = `https://query1.finance.yahoo.com/v7/finance/download/${ticker}?period1=${oneYearAgo}&period2=${now}&interval=1d&events=history${cacheBuster}`;
@@ -395,14 +425,14 @@
 
             // TENTATIVA 5: Stooq
             try {
-                document.getElementById('loadingStep').textContent = "Acessando base de dados alternativa (Stooq)...";
+                document.getElementById('loadingStep').textContent = "A aceder à base de dados alternativa (Stooq)...";
                 let stooqTicker = ticker.endsWith('.SA') ? ticker.replace('.SA', '.BR') : (ticker.includes('.') ? ticker : ticker + '.US');
                 const stooqUrl = `https://stooq.com/q/d/l/?s=${stooqTicker}&i=d${cacheBuster}`;
                 const csv = await fetchWithProxies(stooqUrl, false);
                 return parseCSV(csv, 'Stooq.com (Base Global)');
             } catch(e) { console.warn("Stooq falhou."); }
 
-            throw new Error(`Impossível baixar dados reais para "${ticker}". O ativo pode não existir, ou seu AdBlocker/Navegador está bloqueando a comunicação com os servidores.`);
+            throw new Error(`Impossível descarregar dados reais para "${ticker}". O ativo pode não existir, ou o seu AdBlocker/Navegador está a bloquear a comunicação com os servidores.`);
         }
 
 
@@ -411,17 +441,21 @@
             if (!ticker) return;
 
             const analysisType = document.getElementById('analysisType').value;
+            const chartStyle = document.getElementById('chartStyle').value;
             const showVolume = document.getElementById('showVolume').checked;
 
             hideMessage();
             setLoader(true);
 
             try {
-                const { timestamps, closePricesRaw, volumesRaw, source } = await obterDadosReais(ticker);
+                const { timestamps, openRaw, highRaw, lowRaw, closePricesRaw, volumesRaw, source } = await obterDadosReais(ticker);
 
                 showMessage(`<strong>Sucesso:</strong> Dados reais de <b>${ticker}</b> carregados.<br><span class="text-xs opacity-75">Fonte autêntica capturada: ${source}</span>`, 'success');
 
                 const dates = [];
+                const opens = [];
+                const highs = [];
+                const lows = [];
                 const closePrices = [];
                 const volumes = [];
                 
@@ -442,7 +476,13 @@
                     const dateStr = dateObj.toISOString().split('T')[0];
 
                     dates.push(dateStr);
+                    
+                    // Preenchimento OHLC seguro (caso os valores open/high/low sejam nulos, usamos o preço de fecho)
+                    opens.push(openRaw && openRaw[i] !== null ? openRaw[i] : price);
+                    highs.push(highRaw && highRaw[i] !== null ? highRaw[i] : price);
+                    lows.push(lowRaw && lowRaw[i] !== null ? lowRaw[i] : price);
                     closePrices.push(price);
+                    
                     volumes.push(volumesRaw ? (volumesRaw[i] || 0) : 0);
 
                     if (analysisType === 'bollinger') {
@@ -477,10 +517,25 @@
                 const isOscillator = analysisType === 'rsi' || analysisType === 'macd';
 
                 // --- PLOTAGEM DO PREÇO (Gráfico Principal) ---
-                plotData.push({
-                    x: dates, y: closePrices, name: 'Preço Fechamento', type: 'scatter', mode: 'lines',
-                    line: { color: '#636EFA' }, yaxis: 'y'
-                });
+                if (chartStyle === 'candlestick') {
+                    plotData.push({
+                        x: dates, 
+                        open: opens, 
+                        high: highs, 
+                        low: lows, 
+                        close: closePrices, 
+                        name: 'Preço', 
+                        type: 'candlestick',
+                        increasing: { line: { color: '#00CC96' } }, // Vela Verde (Alta)
+                        decreasing: { line: { color: '#EF553B' } }, // Vela Vermelha (Baixa)
+                        yaxis: 'y'
+                    });
+                } else {
+                    plotData.push({
+                        x: dates, y: closePrices, name: 'Preço Fecho', type: 'scatter', mode: 'lines',
+                        line: { color: '#636EFA' }, yaxis: 'y'
+                    });
+                }
 
                 if (analysisType === 'bollinger') {
                     plotData.push({ x: dates, y: lowerBands, name: 'Banda Inferior', type: 'scatter', mode: 'lines', line: { color: 'rgba(173,204,255,0.2)' } });
@@ -524,7 +579,12 @@
                         xanchor: 'center'
                     },
                     paper_bgcolor: '#111827', plot_bgcolor: '#111827', font: { color: '#9ca3af' },
-                    xaxis: { title: 'Data', gridcolor: '#374151', zerolinecolor: '#374151' },
+                    xaxis: { 
+                        title: 'Data', 
+                        gridcolor: '#374151', 
+                        zerolinecolor: '#374151',
+                        rangeslider: { visible: false } // Remove o slider de navegação padrão das velas que comprime o gráfico
+                    },
                     
                     // Move a legenda para a parte inferior e alinha à esquerda para evitar sobreposições horizontais
                     legend: { orientation: 'h', y: -0.25, x: 0, yanchor: 'top' }, 
