@@ -1,4 +1,4 @@
-const CACHE_NAME = 'Acoes-v2';
+const CACHE_NAME = 'Acoes-v3';
 
 const ASSETS = [
   './',
