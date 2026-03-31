@@ -40,7 +40,7 @@
                     <i data-lucide="line-chart" class="text-blue-500"></i>
                     Análise Gráfica de Ações
                 </h1>
-                <p class="text-sm text-gray-400 mt-1">Implementação em JS com Multi-API (Yahoo & Stooq)</p>
+                <p class="text-sm text-gray-400 mt-1">Implementação em JS com Multi-API (Brapi, Yahoo & Stooq)</p>
             </div>
 
             <div class="flex flex-col md:flex-row w-full md:w-auto gap-3 items-center">
@@ -58,20 +58,32 @@
                     onchange="selecionarPopular()" 
                     class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full md:w-auto p-2.5 cursor-pointer"
                 >
-                    <option value="">Ações Populares...</option>
-                    <option value="PETR4.SA">Petrobras (PETR4)</option>
-                    <option value="VALE3.SA">Vale (VALE3)</option>
-                    <option value="ITUB4.SA">Itaú Unibanco (ITUB4)</option>
-                    <option value="BBDC4.SA">Bradesco (BBDC4)</option>
-                    <option value="BBAS3.SA">Banco do Brasil (BBAS3)</option>
-                    <option value="WEGE3.SA">WEG (WEGE3)</option>
-                    <option value="ABEV3.SA">Ambev (ABEV3)</option>
-                    <option value="B3SA3.SA">B3 (B3SA3)</option>
-                    <option value="ELET3.SA">Eletrobras (ELET3)</option>
-                    <option value="RENT3.SA">Localiza (RENT3)</option>
-                    <option value="JBSS3.SA">JBS (JBSS3)</option>
-                    <option value="SUZB3.SA">Suzano (SUZB3)</option>
-                    <option value="MGLU3.SA">Magalu (MGLU3)</option>
+                    <option value="">Ações e FIIs Populares...</option>
+                    <optgroup label="Ações">
+                        <option value="PETR4.SA">Petrobras (PETR4)</option>
+                        <option value="VALE3.SA">Vale (VALE3)</option>
+                        <option value="ITUB4.SA">Itaú Unibanco (ITUB4)</option>
+                        <option value="BBDC4.SA">Bradesco (BBDC4)</option>
+                        <option value="BBAS3.SA">Banco do Brasil (BBAS3)</option>
+                        <option value="WEGE3.SA">WEG (WEGE3)</option>
+                        <option value="ABEV3.SA">Ambev (ABEV3)</option>
+                        <option value="B3SA3.SA">B3 (B3SA3)</option>
+                        <option value="ELET3.SA">Eletrobras (ELET3)</option>
+                        <option value="RENT3.SA">Localiza (RENT3)</option>
+                        <option value="JBSS3.SA">JBS (JBSS3)</option>
+                        <option value="SUZB3.SA">Suzano (SUZB3)</option>
+                        <option value="MGLU3.SA">Magalu (MGLU3)</option>
+                    </optgroup>
+                    <optgroup label="Fundos Imobiliários (FIIs)">
+                        <option value="MXRF11.SA">Maxi Renda (MXRF11)</option>
+                        <option value="HGLG11.SA">CSHG Logística (HGLG11)</option>
+                        <option value="KNRI11.SA">Kinea Renda (KNRI11)</option>
+                        <option value="BTLG11.SA">BTG Logística (BTLG11)</option>
+                        <option value="VISC11.SA">Vinci Shoppings (VISC11)</option>
+                        <option value="XPLG11.SA">XP Logística (XPLG11)</option>
+                        <option value="CPTS11.SA">Capitania Securities (CPTS11)</option>
+                        <option value="KNCR11.SA">Kinea Rendimentos (KNCR11)</option>
+                    </optgroup>
                 </select>
                 
                 <span class="text-gray-500 text-sm hidden md:inline">ou</span>
@@ -169,30 +181,39 @@
 
         // --- SISTEMA ROBUSTO DE FETCH COM PROXIES ---
         async function fetchWithProxies(url, isJson = true) {
-            // Utilizamos proxies crús que contornam bloqueios melhor e retornam as respostas nativas das APIs
             const proxies = [
+                `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
                 `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-                `https://corsproxy.io/?${encodeURIComponent(url)}`
+                `https://thingproxy.freeboard.io/fetch/${url}`
             ];
             
             for (const proxy of proxies) {
                 try {
                     const res = await fetch(proxy);
-                    if (!res.ok) continue; // Pula para o próximo proxy se houver erro HTTP forte
+                    if (!res.ok) continue; 
                     
-                    const text = await res.text();
+                    let text;
+                    if (proxy.includes('allorigins.win/get')) {
+                        const json = await res.json();
+                        if (!json.contents) continue;
+                        text = json.contents;
+                    } else {
+                        text = await res.text();
+                    }
 
                     if (isJson) {
                         try {
-                            return JSON.parse(text); // Tenta converter, se a API retornou um erro HTML isso irá falhar suavemente
+                            const parsed = JSON.parse(text);
+                            if (parsed?.finance?.error) continue;
+                            if (parsed?.chart?.error) continue;
+                            return parsed; 
                         } catch (e) {
-                            continue; // Não era um JSON válido, provavelmente uma página de captcha/erro
+                            continue; 
                         }
                     } else {
-                        // Se estamos buscando CSV, valida se o retorno não foi acidentalmente uma página HTML de erro
                         const lowerText = text.trim().toLowerCase();
-                        if (lowerText.startsWith('<!doctype') || lowerText.startsWith('<html')) {
+                        if (lowerText.startsWith('<!doctype') || lowerText.startsWith('<html') || lowerText.includes('error 404')) {
                             continue; 
                         }
                         return text;
@@ -204,13 +225,12 @@
             throw new Error("Todos os proxies foram bloqueados no momento.");
         }
 
-        // Analisador universal de arquivos CSV (Para o Endpoint de Download do Yahoo e pro Stooq)
+        // Analisador universal de arquivos CSV 
         function parseCSV(csv, sourceName) {
             const lines = csv.split('\n').map(l => l.trim()).filter(l => l);
             if (lines.length > 1 && lines[0].toLowerCase().includes('date')) {
                 const headers = lines[0].toLowerCase().split(',');
                 const dateIdx = headers.indexOf('date');
-                // O Yahoo possui "adj close" (fechamento ajustado), damos preferência a ele.
                 let closeIdx = headers.indexOf('adj close');
                 if (closeIdx === -1) closeIdx = headers.indexOf('close');
                 
@@ -219,7 +239,6 @@
                 
                 for (let i = 1; i < lines.length; i++) {
                     const cols = lines[i].split(',');
-                    // Verifica se a linha tem as colunas corretas e se não é um dia sem negociações ('null')
                     if(cols[dateIdx] && cols[closeIdx] && cols[closeIdx] !== 'null') {
                         const dateObj = new Date(cols[dateIdx]);
                         if (!isNaN(dateObj.getTime())) {
@@ -230,8 +249,6 @@
                 }
                 
                 if (t.length > 0) {
-                    // Ordena cronologicamente do mais antigo pro mais novo 
-                    // Isso corrige o erro de algumas APIs (como Stooq) que mandam os dados de trás pra frente
                     const combined = t.map((time, idx) => ({ time, price: c[idx] }));
                     combined.sort((a, b) => a.time - b.time);
                     
@@ -247,11 +264,47 @@
 
         // --- ESTRATÉGIA DE MÚLTIPLAS APIs REAIS ---
         async function obterDadosReais(ticker) {
+            const cacheBuster = `&cb=${Date.now()}`;
+
+            // TENTATIVA 1: API Oficial do Mercado Brasileiro (Brapi) - Permite CORS nativo!
+            if (ticker.toUpperCase().endsWith('.SA')) {
+                try {
+                    document.getElementById('loadingStep').textContent = "Consultando API Oficial B3 (Brapi)...";
+                    const cleanTicker = ticker.replace('.SA', '');
+                    const brapiUrl = `https://brapi.dev/api/quote/${cleanTicker}?range=1y&interval=1d&fundamental=false`;
+                    
+                    // Tentativa Direta (Geralmente funciona sem proxy por ter CORS configurado)
+                    let res = await fetch(brapiUrl).catch(() => null);
+                    let data;
+                    if (res && res.ok) {
+                        data = await res.json();
+                    } else {
+                        // Fallback usando proxy se a requisição direta falhar
+                        data = await fetchWithProxies(brapiUrl, true);
+                    }
+
+                    if (data?.results?.[0]?.historicalDataPrice?.length > 0) {
+                        const history = data.results[0].historicalDataPrice;
+                        const t = [];
+                        const c = [];
+                        history.forEach(item => {
+                            if (item.close && item.date) {
+                                t.push(item.date); // Brapi devolve UNIX timestamp em segundos
+                                c.push(item.close);
+                            }
+                        });
+                        
+                        if (t.length > 0) {
+                            return { timestamps: t, closePricesRaw: c, source: 'Brapi.dev (Mercado B3)' };
+                        }
+                    }
+                } catch(e) { console.warn("Brapi falhou.", e); }
+            }
             
-            // TENTATIVA 1: Yahoo Finance API Principal
+            // TENTATIVA 2: Yahoo Finance API Principal
             try {
                 document.getElementById('loadingStep').textContent = "Tentando Yahoo Finance (Chart API)...";
-                const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d`;
+                const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d${cacheBuster}`;
                 const data = await fetchWithProxies(yfUrl, true);
                 if (data?.chart?.result?.[0]?.timestamp) {
                     return {
@@ -262,10 +315,10 @@
                 }
             } catch(e) { console.warn("YF Chart falhou."); }
 
-            // TENTATIVA 2: Yahoo Finance Spark API (Para widgets pequenos)
+            // TENTATIVA 3: Yahoo Finance Spark API 
             try {
                 document.getElementById('loadingStep').textContent = "Tentando Yahoo Finance (Spark API)...";
-                const sparkUrl = `https://query2.finance.yahoo.com/v7/finance/spark?symbols=${ticker}&range=1y&interval=1d`;
+                const sparkUrl = `https://query2.finance.yahoo.com/v7/finance/spark?symbols=${ticker}&range=1y&interval=1d${cacheBuster}`;
                 const data = await fetchWithProxies(sparkUrl, true);
                 if (data?.spark?.result?.[0]?.response?.[0]?.timestamp) {
                     return {
@@ -276,27 +329,26 @@
                 }
             } catch(e) { console.warn("YF Spark falhou."); }
 
-            // TENTATIVA 3: Yahoo Finance Endpoint de Arquivo CSV Histórico (Muito resistente a bloqueios)
+            // TENTATIVA 4: Yahoo Finance Endpoint de Arquivo CSV Histórico
             try {
                 document.getElementById('loadingStep').textContent = "Acessando Histórico Cru do Yahoo Finance (CSV)...";
                 const now = Math.floor(Date.now() / 1000);
                 const oneYearAgo = now - (365 * 86400);
-                const yfCsvUrl = `https://query1.finance.yahoo.com/v7/finance/download/${ticker}?period1=${oneYearAgo}&period2=${now}&interval=1d&events=history`;
+                const yfCsvUrl = `https://query1.finance.yahoo.com/v7/finance/download/${ticker}?period1=${oneYearAgo}&period2=${now}&interval=1d&events=history${cacheBuster}`;
                 const csv = await fetchWithProxies(yfCsvUrl, false);
                 return parseCSV(csv, 'Yahoo Finance (CSV via Download)');
             } catch(e) { console.warn("YF CSV Download falhou."); }
 
-            // TENTATIVA 4: Stooq.com (Base de dados alternativa gratuita global via CSV)
+            // TENTATIVA 5: Stooq.com (Base de dados global)
             try {
                 document.getElementById('loadingStep').textContent = "Acessando base de dados alternativa (Stooq)...";
-                // Adequação de Sigla: B3 usa terminação .BR no Stooq 
                 let stooqTicker = ticker.endsWith('.SA') ? ticker.replace('.SA', '.BR') : (ticker.includes('.') ? ticker : ticker + '.US');
-                const stooqUrl = `https://stooq.com/q/d/l/?s=${stooqTicker}&i=d`;
+                const stooqUrl = `https://stooq.com/q/d/l/?s=${stooqTicker}&i=d${cacheBuster}`;
                 const csv = await fetchWithProxies(stooqUrl, false);
                 return parseCSV(csv, 'Stooq.com (Base Global)');
             } catch(e) { console.warn("Stooq falhou."); }
 
-            throw new Error(`Impossível baixar dados reais para "${ticker}". O ativo não existe ou todas as APIs estão inacessíveis.`);
+            throw new Error(`Impossível baixar dados reais para "${ticker}". O ativo pode não existir, ou seu AdBlocker/Navegador está bloqueando a comunicação com os servidores.`);
         }
 
 
@@ -310,7 +362,6 @@
             setLoader(true);
 
             try {
-                // Invoca o gerenciador Multi-API aprimorado que garante os DADOS REAIS
                 const { timestamps, closePricesRaw, source } = await obterDadosReais(ticker);
 
                 showMessage(`<strong>Sucesso:</strong> Dados reais de <b>${ticker}</b> carregados.<br><span class="text-xs opacity-75">Fonte autêntica capturada: ${source}</span>`, 'success');
@@ -340,6 +391,7 @@
                     if (price === null || isNaN(price)) continue; 
                     
                     const dateObj = new Date(timestamps[i] * 1000);
+                    // Adiciona o timezone local ao formatar, caso queira
                     const dateStr = dateObj.toISOString().split('T')[0];
 
                     dates.push(dateStr);
@@ -387,7 +439,6 @@
                     }
                 }
 
-                // Plotagem - Adiciona as linhas dinamicamente baseado na análise
                 const plotData = [];
 
                 if (analysisType === 'bollinger') {
