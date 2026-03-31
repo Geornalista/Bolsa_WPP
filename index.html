@@ -512,12 +512,26 @@
                 }
 
                 // --- CONFIGURAÇÃO DO LAYOUT & SUB-GRÁFICOS ---
+                const chartTitle = analysisType === 'bollinger' 
+                    ? `${ticker} - Bandas de Bollinger` 
+                    : `${ticker} - Análise Técnica`;
+
                 const layout = {
-                    title: { text: `${ticker} - Análise Técnica`, font: { color: '#ffffff', size: 18 } },
+                    title: { 
+                        text: chartTitle, 
+                        font: { color: '#ffffff', size: 18 },
+                        x: 0.5,
+                        xanchor: 'center'
+                    },
                     paper_bgcolor: '#111827', plot_bgcolor: '#111827', font: { color: '#9ca3af' },
                     xaxis: { title: 'Data', gridcolor: '#374151', zerolinecolor: '#374151' },
-                    legend: { orientation: 'h', y: 1.1, x: 0.5, xanchor: 'center' },
-                    margin: { t: 60, l: 60, r: 40, b: 60 },
+                    
+                    // Move a legenda para a parte inferior e alinha à esquerda para evitar sobreposições horizontais
+                    legend: { orientation: 'h', y: -0.25, x: 0, yanchor: 'top' }, 
+                    
+                    // Ajuste das margens: reduz o topo e aumenta a base para caber a legenda e o eixo X perfeitamente
+                    margin: { t: 70, l: 60, r: 40, b: 120 }, 
+                    
                     hovermode: 'x unified'
                 };
 
